@@ -16,6 +16,13 @@ const {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// FEATURE MODULES
+const asmaModule   = require("./modules/asma");
+const duaModule    = require("./modules/dua");
+const tafsirModule = require("./modules/tafsir");
+const MODULES = [asmaModule, duaModule, tafsirModule];
+
+
 // ─────────────────────────────────────────────────────
 //  COLLECTION REGISTRY  (all free, no API key needed)
 //  Source: cdn.jsdelivr.net/gh/fawazahmed0/hadith-api
@@ -373,13 +380,54 @@ const commands = [
     .setName("explore")
     .setDescription("Open an interactive collection explorer with a dropdown menu"),
 
+  new SlashCommandBuilder()
+    .setName("fatwa")
+    .setDescription("Get a fatwa from Ibn Taymiyyah, Ibn al-Qayyim, Ibn Baz, or Ibn Uthaymeen")
+    .addStringOption(o =>
+      o.setName("scholar").setDescription("Filter by scholar")
+        .addChoices(
+          { name: "All Scholars", value: "all" },
+          ...SCHOLAR_KEYS.map(k => ({ name: SCHOLARS[k].name, value: k }))
+        )
+    )
+    .addStringOption(o =>
+      o.setName("topic").setDescription("Filter by topic")
+        .addChoices(...FATWA_TOPIC_KEYS.slice(0, 25).map(k => ({ name: FATWA_TOPICS[k].label, value: k })))
+    ),
+
+  new SlashCommandBuilder()
+    .setName("scholars")
+    .setDescription("List all scholars in the fatawa database with their backgrounds"),
+
+
+
 ].map(c => c.toJSON());
+// Append module commands
+for (const mod of MODULES) { if (mod.commands) commands.push(...mod.commands); }
 
 // ─────────────────────────────────────────────────────
 //  BOT EVENTS
 // ─────────────────────────────────────────────────────
 client.once("ready", async () => {
   console.log(`✅ Bot ready: ${client.user.tag}`);
+
+  // ── Bot Status (set BOT_STATUS in Railway/env) ──────────
+  // Format: "TYPE:TEXT"  e.g. "PLAYING:Quran & Hadith"
+  //         "WATCHING:over the ummah"
+  //         "LISTENING:to your du'as"
+  //         "COMPETING:in good deeds"
+  //         "CUSTOM:بسم الله الرحمن الرحيم"
+  const statusEnv = process.env.BOT_STATUS || "WATCHING:📖 Quran | /hadith /ayah /dua";
+  const [typeRaw, ...textParts] = statusEnv.split(":");
+  const statusText = textParts.join(":");
+  const activityTypes = { PLAYING: 0, STREAMING: 1, LISTENING: 2, WATCHING: 3, COMPETING: 5, CUSTOM: 4 };
+  const activityType  = activityTypes[typeRaw.toUpperCase()] ?? 3;
+  client.user.setPresence({
+    activities: [{ name: statusText, type: activityType }],
+    status: process.env.BOT_ONLINE_STATUS || "online",
+  });
+  console.log(`✅ Status set: [${typeRaw}] ${statusText}`);
+
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
@@ -518,6 +566,8 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ embeds: [buildCollectionListEmbed()] });
     }
 
+    
+
     else if (cmd === "explore") {
       const embed = new EmbedBuilder()
         .setColor(0x4E342E)
@@ -646,6 +696,69 @@ client.on("interactionCreate", async interaction => {
     } catch {
       await interaction.editReply({ embeds: [buildErrorEmbed("Could not load a random ayah.")] });
     }
+  }
+
+  // ── FATWA SELECT MENUS ────────────────────────────
+  else if (interaction.isStringSelectMenu() && interaction.customId === "select_scholar") {
+    await interaction.deferUpdate();
+    const scholarKey = interaction.values[0];
+    const filter = scholarKey === "all" ? {} : { scholar: scholarKey };
+    const fatwa = getRandomFatwa(filter);
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("No fatawa found for that selection.")] });
+    const navRow = buildFatwaNavButtons(fatwa.id, filter.scholar || "", "");
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
+  else if (interaction.isStringSelectMenu() && interaction.customId === "select_fatwa_topic") {
+    await interaction.deferUpdate();
+    const topic = interaction.values[0];
+    const fatwa = getRandomFatwa({ topic });
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("No fatawa found for that topic.")] });
+    const navRow = buildFatwaNavButtons(fatwa.id, "", topic);
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
+  // ── FATWA NAV BUTTONS ────────────────────────────
+  else if (interaction.isButton() && interaction.customId.startsWith("fatwa_nav_")) {
+    await interaction.deferUpdate();
+    const parts = interaction.customId.split("_");
+    // fatwa_nav_<id>_<scholar>_<topic>
+    const fatwaId      = parts[2];
+    const scholarFilter = parts[3] || "";
+    const topicFilter   = parts[4] || "";
+    const fatwa = FATAWA.find(f => f.id === fatwaId);
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("Could not find that fatwa.")] });
+    const navRow = buildFatwaNavButtons(fatwaId, scholarFilter, topicFilter);
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
+  // MODULE SLASH COMMANDS
+  else if (interaction.isChatInputCommand()) {
+    const cmd = interaction.commandName;
+    for (const mod of MODULES) {
+      if (mod.handlers && mod.handlers[cmd]) { await mod.handlers[cmd](interaction); return; }
+    }
+  }
+
+  // MODULE SELECT MENUS
+  else if (interaction.isStringSelectMenu()) {
+    const cid = interaction.customId;
+    if (cid === "select_dua_category")  { await duaModule.selectHandler(interaction);    return; }
+    if (cid === "select_tafsir")        { await tafsirModule.selectHandler(interaction); return; }
+  }
+
+  // MODULE BUTTONS
+  else if (interaction.isButton()) {
+    const id = interaction.customId;
+    if (id.startsWith("asma_"))    { await asmaModule.buttonHandler(interaction);   return; }
+    if (id.startsWith("dua_nav_")) { await duaModule.buttonHandler(interaction);    return; }
+    if (id.startsWith("tafsir_"))  { await tafsirModule.buttonHandler(interaction); return; }
   }
 });
 
