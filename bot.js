@@ -16,13 +16,12 @@ const {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// FEATURE MODULES — Fixed paths (removed /modules/ prefix)
-const prayerModule = require("./prayer");
+// FEATURE MODULES — Prayer removed
 const asmaModule   = require("./asma");
 const duaModule    = require("./dua");
 const seerahModule = require("./seerah");
 const tafsirModule = require("./tafsir");
-const MODULES = [prayerModule, asmaModule, duaModule, seerahModule, tafsirModule];
+const MODULES = [asmaModule, duaModule, seerahModule, tafsirModule];
 
 
 // ─────────────────────────────────────────────────────
@@ -365,15 +364,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("explore")
-    .setDescription("Open an interactive collection explorer with a dropdown menu"),
-
-  new SlashCommandBuilder()
-    .setName("fatwa")
-    .setDescription("Get a fatwa from scholars")
-    .addStringOption(o =>
-      o.setName("scholar").setDescription("Filter by scholar")
-        .addChoices({ name: "All Scholars", value: "all" })
-    )
+    .setDescription("Open an interactive collection explorer with a dropdown menu")
 
 ].map(c => c.toJSON());
 
@@ -534,10 +525,6 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ embeds: [embed], components: [buildCollectionMenu()] });
     }
     
-    else if (cmd === "fatwa") {
-      await interaction.editReply({ embeds: [buildErrorEmbed("Fatwa module is currently being updated. Check back soon!")] });
-    }
-
     else {
       for (const mod of MODULES) {
         if (mod.handlers && mod.handlers[cmd]) { 
