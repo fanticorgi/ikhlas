@@ -20,8 +20,10 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const prayerModule = require("./modules/prayer");
 const asmaModule   = require("./modules/asma");
 const duaModule    = require("./modules/dua");
+const seerahModule = require("./modules/seerah");
 const tafsirModule = require("./modules/tafsir");
-const MODULES = [prayerModule, asmaModule, duaModule, tafsirModule];
+const MODULES = [prayerModule, asmaModule, duaModule, seerahModule, tafsirModule];
+
 
 // ─────────────────────────────────────────────────────
 //  COLLECTION REGISTRY  (all free, no API key needed)
@@ -399,6 +401,8 @@ const commands = [
     .setName("scholars")
     .setDescription("List all scholars in the fatawa database with their backgrounds"),
 
+
+
 ].map(c => c.toJSON());
 // Append module commands
 for (const mod of MODULES) { if (mod.commands) commands.push(...mod.commands); }
@@ -546,6 +550,8 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ embeds: [buildCollectionListEmbed()] });
     }
 
+    
+
     else if (cmd === "explore") {
       const embed = new EmbedBuilder()
         .setColor(0x4E342E)
@@ -676,6 +682,46 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
+  // ── FATWA SELECT MENUS ────────────────────────────
+  else if (interaction.isStringSelectMenu() && interaction.customId === "select_scholar") {
+    await interaction.deferUpdate();
+    const scholarKey = interaction.values[0];
+    const filter = scholarKey === "all" ? {} : { scholar: scholarKey };
+    const fatwa = getRandomFatwa(filter);
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("No fatawa found for that selection.")] });
+    const navRow = buildFatwaNavButtons(fatwa.id, filter.scholar || "", "");
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
+  else if (interaction.isStringSelectMenu() && interaction.customId === "select_fatwa_topic") {
+    await interaction.deferUpdate();
+    const topic = interaction.values[0];
+    const fatwa = getRandomFatwa({ topic });
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("No fatawa found for that topic.")] });
+    const navRow = buildFatwaNavButtons(fatwa.id, "", topic);
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
+  // ── FATWA NAV BUTTONS ────────────────────────────
+  else if (interaction.isButton() && interaction.customId.startsWith("fatwa_nav_")) {
+    await interaction.deferUpdate();
+    const parts = interaction.customId.split("_");
+    // fatwa_nav_<id>_<scholar>_<topic>
+    const fatwaId      = parts[2];
+    const scholarFilter = parts[3] || "";
+    const topicFilter   = parts[4] || "";
+    const fatwa = FATAWA.find(f => f.id === fatwaId);
+    if (!fatwa) return interaction.editReply({ embeds: [buildErrorEmbed("Could not find that fatwa.")] });
+    const navRow = buildFatwaNavButtons(fatwaId, scholarFilter, topicFilter);
+    const components = [buildScholarSelectMenu(), buildTopicSelectMenu()];
+    if (navRow) components.push(navRow);
+    await interaction.editReply({ embeds: [buildFatwaEmbed(fatwa)], components });
+  }
+
   // MODULE SLASH COMMANDS
   else if (interaction.isChatInputCommand()) {
     const cmd = interaction.commandName;
@@ -688,6 +734,7 @@ client.on("interactionCreate", async interaction => {
   else if (interaction.isStringSelectMenu()) {
     const cid = interaction.customId;
     if (cid === "select_dua_category")  { await duaModule.selectHandler(interaction);    return; }
+    if (cid === "select_seerah_period") { await seerahModule.selectHandler(interaction); return; }
     if (cid === "select_tafsir")        { await tafsirModule.selectHandler(interaction); return; }
   }
 
@@ -696,6 +743,7 @@ client.on("interactionCreate", async interaction => {
     const id = interaction.customId;
     if (id.startsWith("asma_"))    { await asmaModule.buttonHandler(interaction);   return; }
     if (id.startsWith("dua_nav_")) { await duaModule.buttonHandler(interaction);    return; }
+    if (id.startsWith("seerah_"))  { await seerahModule.buttonHandler(interaction); return; }
     if (id.startsWith("tafsir_"))  { await tafsirModule.buttonHandler(interaction); return; }
   }
 });
@@ -704,7 +752,7 @@ client.on("interactionCreate", async interaction => {
 //  START
 // ─────────────────────────────────────────────────────
 if (!process.env.DISCORD_TOKEN) {
-  console.error("❌  DISORD_TOKEN not set. Create a .env file with your token.");
+  console.error("❌  DISCORD_TOKEN not set. Create a .env file with your token.");
   process.exit(1);
 }
 
