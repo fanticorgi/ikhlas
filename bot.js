@@ -22,7 +22,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 // ─────────────────────────────────────────────────────
 const COLLECTIONS = {
   bukhari:  { name: "Sahih al-Bukhari",     color: 0x1B5E20, emoji: "📗", edition: "eng-bukhari",  totalHadiths: 7563 },
-  muslim:   { name: "Sahih Muslim",         color: 0x0D47A1, emoji: "📘", edition: "eng-muslim",   totalHadiths: 3033 },
+  muslim:   { name: "Sahih Muslim",         color: 0x0D47A1, emoji: "📘", edition: "eng-muslim",   totalHadiths: 7563 },
   abudawud: { name: "Sunan Abu Dawud",      color: 0x4A148C, emoji: "📙", edition: "eng-abudawud", totalHadiths: 5274 },
   tirmidhi: { name: "Jami' al-Tirmidhi",   color: 0x880E4F, emoji: "📕", edition: "eng-tirmidhi", totalHadiths: 3956 },
   ibnmajah: { name: "Sunan Ibn Majah",      color: 0x004D40, emoji: "📒", edition: "eng-ibnmajah", totalHadiths: 4341 },
@@ -136,49 +136,13 @@ async function fetchRandomAyah(translationKey = DEFAULT_TRANSLATION) {
 }
 
 // ─────────────────────────────────────────────────────
-//  ISNAD HELPERS
-// ─────────────────────────────────────────────────────
-function extractIsnad(hadithObj) {
-  if (!hadithObj) return null;
-  // Check various field names used by different editions
-  return hadithObj.chain || 
-         hadithObj.narrator_chain || 
-         hadithObj.isnad || 
-         hadithObj.narrators?.join(" → ") ||
-         null;
-}
-
-function formatIsnad(isnadText, maxLength = 1000) {
-  if (!isnadText) return null;
-  // Clean up formatting
-  let cleaned = isnadText
-    .replace(/\n/g, " → ")
-    .replace(/\s+/g, " ")
-    .trim();
-  
-  // Truncate if too long
-  if (cleaned.length > maxLength) {
-    cleaned = cleaned.substring(0, maxLength - 3) + "...";
-  }
-  
-  return cleaned;
-}
-
-// ─────────────────────────────────────────────────────
 //  EMBED BUILDERS
 // ─────────────────────────────────────────────────────
-function buildHadithEmbed(collectionKey, hadithData, number, includeArabic = false, arabicData = null, showIsnad = false) {
+function buildHadithEmbed(collectionKey, hadithData, number, includeArabic = false, arabicData = null) {
   const col    = COLLECTIONS[collectionKey];
   const hadith = hadithData?.hadiths?.[0] || {};
   const text   = hadith.text || hadithData?.text || "Text unavailable.";
   const section = hadithData?.metadata?.name || hadithData?.section?.title || null;
-
-  // 🔗 EXTRACT ISNAD from English and Arabic editions
-  let isnadEng = extractIsnad(hadith);
-  let isnadAra = extractIsnad(arabicData?.hadiths?.[0]);
-  
-  // Format for display
-  const formattedIsnad = formatIsnad(isnadAra || isnadEng);
 
   // Grade detection
   let grade = null;
@@ -196,22 +160,6 @@ function buildHadithEmbed(collectionKey, hadithData, number, includeArabic = fal
     .setFooter({ text: "No knowledge except what Allah has taught • لا علم إلا ما علَّم الله" })
     .setTimestamp();
 
-  // 📜 SHOW ISNAD if available and requested or auto-show for detailed view
-  if (formattedIsnad && (showIsnad || formattedIsnad.length < 200)) {
-    embed.addFields({ 
-      name: "🔗 Chain of Narration (Isnad)", 
-      value: `\`\`\`${formattedIsnad}\`\`\``, 
-      inline: false 
-    });
-  } else if (formattedIsnad) {
-    // Indicate isnad is available but hidden
-    embed.addFields({ 
-      name: "🔗 Isnad", 
-      value: "*Chain of narration available. Click the **Isnad** button to view.*", 
-      inline: true 
-    });
-  }
-
   if (grade) {
     embed.addFields({ name: "📊 Grade", value: `${grade.emoji}  **${grade.label}**`, inline: true });
   }
@@ -222,7 +170,7 @@ function buildHadithEmbed(collectionKey, hadithData, number, includeArabic = fal
   );
 
   if (section) {
-    embed.addFields({ name: "📂 Chapter", value: section, inline: false });
+    embed.addFields({ name: "📂 Chapter", value: section });
   }
 
   if (includeArabic && arabicData) {
@@ -230,77 +178,6 @@ function buildHadithEmbed(collectionKey, hadithData, number, includeArabic = fal
     if (arabicText) {
       embed.addFields({ name: "🕌 Arabic Text", value: `\`\`\`${arabicText.substring(0, 1000)}\`\`\`` });
     }
-  }
-
-  return embed;
-}
-
-// 🔗 SPECIALIZED ISNAD EMBED
-function buildIsnadEmbed(collectionKey, hadithData, arabicData, number) {
-  const col = COLLECTIONS[collectionKey];
-  const hadith = hadithData?.hadiths?.[0] || {};
-  const arabicHadith = arabicData?.hadiths?.[0] || {};
-  
-  // Get both English and Arabic chains
-  let isnadEng = extractIsnad(hadith);
-  let isnadAra = extractIsnad(arabicHadith);
-  
-  // Also try to extract from text if no chain field
-  if (!isnadEng && hadith.text) {
-    const match = hadith.text.match(/Narrated by ([^:]+):/);
-    if (match) isnadEng = match[1];
-  }
-
-  const embed = new EmbedBuilder()
-    .setColor(col.color)
-    .setTitle(`${col.emoji} Isnad Analysis: ${col.name} #${number}`)
-    .setDescription("**Chain of Narration** — The path of transmitters from the Prophet ﷺ")
-    .setFooter({ text: "End of chain: Prophet Muhammad ﷺ" })
-    .setTimestamp();
-
-  // Arabic isnad (usually more complete)
-  if (isnadAra) {
-    embed.addFields({
-      name: "🕌 Arabic Isnad",
-      value: `\`\`\`\n${formatIsnad(isnadAra, 1024)}\n\`\`\``,
-      inline: false
-    });
-  }
-
-  // English isnad
-  if (isnadEng && isnadEng !== isnadAra) {
-    embed.addFields({
-      name: "🇬🇧 English Chain",
-      value: `\`\`\`\n${formatIsnad(isnadEng, 1024)}\n\`\`\``,
-      inline: false
-    });
-  }
-
-  // Show narrator names if available as array
-  if (hadith.narrators?.length > 0) {
-    embed.addFields({
-      name: "👥 Narrators",
-      value: hadith.narrators.map((n, i) => `${i + 1}. ${n}`).join("\n").substring(0, 1024),
-      inline: false
-    });
-  }
-
-  // Preview of the matn (text)
-  const textPreview = hadith.text?.substring(0, 200) + (hadith.text?.length > 200 ? "..." : "");
-  embed.addFields({
-    name: "📖 Hadith Text (Preview)",
-    value: textPreview || "N/A",
-    inline: false
-  });
-
-  // Grade
-  if (hadith.grades?.[0]?.grade) {
-    const grade = parseGrade(hadith.grades[0].grade);
-    embed.addFields({
-      name: "📊 Grade",
-      value: `${grade.emoji} ${grade.label}`,
-      inline: true
-    });
   }
 
   return embed;
@@ -389,30 +266,18 @@ function buildCollectionListEmbed() {
     .setFooter({ text: "All sourced from fawazahmed0/hadith-api + alquran.cloud — no key required" });
 }
 
-function buildNavButtons(collectionKey, currentNum, showIsnad = true) {
+function buildNavButtons(collectionKey, currentNum) {
   const col  = COLLECTIONS[collectionKey];
   const prev = Math.max(1, currentNum - 1);
   const next = Math.min(col.totalHadiths, currentNum + 1);
   const rand = Math.floor(Math.random() * col.totalHadiths) + 1;
 
-  const row = new ActionRowBuilder().addComponents(
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`nav_${collectionKey}_${prev}`).setLabel("◀ Prev").setStyle(ButtonStyle.Secondary).setDisabled(currentNum <= 1),
     new ButtonBuilder().setCustomId(`nav_${collectionKey}_${next}`).setLabel("Next ▶").setStyle(ButtonStyle.Secondary).setDisabled(currentNum >= col.totalHadiths),
-    new ButtonBuilder().setCustomId(`nav_${collectionKey}_${rand}`).setLabel("🎲 Random").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`nav_${collectionKey}_${rand}`).setLabel("🎲 Random").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`arabic_${collectionKey}_${currentNum}`).setLabel("🕌 Show Arabic").setStyle(ButtonStyle.Secondary)
   );
-
-  // Add Isnad button if enabled
-  if (showIsnad) {
-    row.addComponents(
-      new ButtonBuilder().setCustomId(`isnad_${collectionKey}_${currentNum}`).setLabel("🔗 Isnad").setStyle(ButtonStyle.Secondary)
-    );
-  }
-
-  row.addComponents(
-    new ButtonBuilder().setCustomId(`arabic_${collectionKey}_${currentNum}`).setLabel("🕌 Arabic").setStyle(ButtonStyle.Secondary)
-  );
-
-  return row;
 }
 
 function buildCollectionMenu() {
@@ -508,18 +373,6 @@ const commands = [
     .setName("explore")
     .setDescription("Open an interactive collection explorer with a dropdown menu"),
 
-  // 🔗 NEW: ISNAD COMMAND
-  new SlashCommandBuilder()
-    .setName("isnad")
-    .setDescription("View the full chain of narration (isnad) for a specific hadith")
-    .addStringOption(o =>
-      o.setName("collection").setDescription("The hadith collection").setRequired(true)
-        .addChoices(...COLLECTION_KEYS.map(k => ({ name: COLLECTIONS[k].name, value: k })))
-    )
-    .addIntegerOption(o =>
-      o.setName("number").setDescription("Hadith number").setRequired(true).setMinValue(1)
-    ),
-
 ].map(c => c.toJSON());
 
 // ─────────────────────────────────────────────────────
@@ -586,35 +439,6 @@ client.on("interactionCreate", async interaction => {
         });
       } catch {
         await interaction.editReply({ embeds: [buildErrorEmbed("Could not load that hadith.")] });
-      }
-    }
-
-    // 🔗 NEW: ISNAD COMMAND HANDLER
-    else if (cmd === "isnad") {
-      const colKey = interaction.options.getString("collection");
-      const num    = interaction.options.getInteger("number");
-      const col    = COLLECTIONS[colKey];
-      
-      if (num > col.totalHadiths) {
-        return interaction.editReply({ embeds: [buildErrorEmbed(`${col.name} only goes up to #${col.totalHadiths}.`)] });
-      }
-      
-      try {
-        // Fetch both English and Arabic for complete isnad
-        const [engData, araData] = await Promise.all([
-          fetchHadith(col.edition, num),
-          fetchHadith(col.edition.replace("eng-", "ara-"), num).catch(() => null)
-        ]);
-        
-        const embed = buildIsnadEmbed(colKey, engData, araData, num);
-        
-        await interaction.editReply({
-          embeds: [embed],
-          components: [buildNavButtons(colKey, num), buildCollectionMenu()]
-        });
-      } catch (err) {
-        console.error(err);
-        await interaction.editReply({ embeds: [buildErrorEmbed(`Could not load isnad for hadith #${num}.`)] });
       }
     }
 
@@ -739,27 +563,6 @@ client.on("interactionCreate", async interaction => {
         });
       } catch {
         await interaction.editReply({ embeds: [buildErrorEmbed(`Could not load hadith #${num}.`)] });
-      }
-    }
-
-    // 🔗 NEW: ISNAD BUTTON HANDLER
-    else if (action === "isnad") {
-      await interaction.deferUpdate();
-      try {
-        const [engData, araData] = await Promise.all([
-          fetchHadith(COLLECTIONS[colKey].edition, num),
-          fetchHadith(COLLECTIONS[colKey].edition.replace("eng-", "ara-"), num).catch(() => null)
-        ]);
-        
-        const embed = buildIsnadEmbed(colKey, engData, araData, num);
-        
-        await interaction.editReply({
-          embeds: [embed],
-          components: [buildNavButtons(colKey, num), buildCollectionMenu()]
-        });
-      } catch (err) {
-        console.error(err);
-        await interaction.editReply({ embeds: [buildErrorEmbed(`Could not load isnad for hadith #${num}.`)] });
       }
     }
 
