@@ -16,6 +16,13 @@ const {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// FEATURE MODULES
+const prayerModule = require("./modules/prayer");
+const asmaModule   = require("./modules/asma");
+const duaModule    = require("./modules/dua");
+const tafsirModule = require("./modules/tafsir");
+const MODULES = [prayerModule, asmaModule, duaModule, tafsirModule];
+
 // ─────────────────────────────────────────────────────
 //  COLLECTION REGISTRY  (all free, no API key needed)
 //  Source: cdn.jsdelivr.net/gh/fawazahmed0/hadith-api
@@ -373,7 +380,28 @@ const commands = [
     .setName("explore")
     .setDescription("Open an interactive collection explorer with a dropdown menu"),
 
+  new SlashCommandBuilder()
+    .setName("fatwa")
+    .setDescription("Get a fatwa from Ibn Taymiyyah, Ibn al-Qayyim, Ibn Baz, or Ibn Uthaymeen")
+    .addStringOption(o =>
+      o.setName("scholar").setDescription("Filter by scholar")
+        .addChoices(
+          { name: "All Scholars", value: "all" },
+          ...SCHOLAR_KEYS.map(k => ({ name: SCHOLARS[k].name, value: k }))
+        )
+    )
+    .addStringOption(o =>
+      o.setName("topic").setDescription("Filter by topic")
+        .addChoices(...FATWA_TOPIC_KEYS.slice(0, 25).map(k => ({ name: FATWA_TOPICS[k].label, value: k })))
+    ),
+
+  new SlashCommandBuilder()
+    .setName("scholars")
+    .setDescription("List all scholars in the fatawa database with their backgrounds"),
+
 ].map(c => c.toJSON());
+// Append module commands
+for (const mod of MODULES) { if (mod.commands) commands.push(...mod.commands); }
 
 // ─────────────────────────────────────────────────────
 //  BOT EVENTS
@@ -647,13 +675,36 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ embeds: [buildErrorEmbed("Could not load a random ayah.")] });
     }
   }
+
+  // MODULE SLASH COMMANDS
+  else if (interaction.isChatInputCommand()) {
+    const cmd = interaction.commandName;
+    for (const mod of MODULES) {
+      if (mod.handlers && mod.handlers[cmd]) { await mod.handlers[cmd](interaction); return; }
+    }
+  }
+
+  // MODULE SELECT MENUS
+  else if (interaction.isStringSelectMenu()) {
+    const cid = interaction.customId;
+    if (cid === "select_dua_category")  { await duaModule.selectHandler(interaction);    return; }
+    if (cid === "select_tafsir")        { await tafsirModule.selectHandler(interaction); return; }
+  }
+
+  // MODULE BUTTONS
+  else if (interaction.isButton()) {
+    const id = interaction.customId;
+    if (id.startsWith("asma_"))    { await asmaModule.buttonHandler(interaction);   return; }
+    if (id.startsWith("dua_nav_")) { await duaModule.buttonHandler(interaction);    return; }
+    if (id.startsWith("tafsir_"))  { await tafsirModule.buttonHandler(interaction); return; }
+  }
 });
 
 // ─────────────────────────────────────────────────────
 //  START
 // ─────────────────────────────────────────────────────
 if (!process.env.DISCORD_TOKEN) {
-  console.error("❌  DISCORD_TOKEN not set. Create a .env file with your token.");
+  console.error("❌  DISORD_TOKEN not set. Create a .env file with your token.");
   process.exit(1);
 }
 
