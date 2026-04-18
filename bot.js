@@ -3,6 +3,7 @@
  *   ISLAMIC KNOWLEDGE BOT
  *   Quran via AlQuran Cloud (api.alquran.cloud/v1)
  *   Hadith · Tafsir · Duas · Asma ul Husna · Hijri via UmmahAPI
+ *   Extended Hadith via hadith-json (GitHub/AhmedBaset)
  *   Single file — no modules folder needed
  * ═══════════════════════════════════════════════════════════════
  */
@@ -25,15 +26,30 @@ const QURAN_API = "https://api.alquran.cloud/v1";
 
 // ─────────────────────────────────────────────────────
 //  HADITH COLLECTIONS
-// ─────────────────────────────────────────────────────
+//  source: "ummah"  → UmmahAPI (original 7)
+//  source: "json"   → hadith-json GitHub dataset
+// ═════════════════════════════════════════════════════
 const COLLECTIONS = {
-  bukhari:  { name: "Sahih al-Bukhari",  arabic: "صحيح البخاري",  color: 0x1B5E20, emoji: "📗", total: 7589 },
-  muslim:   { name: "Sahih Muslim",      arabic: "صحيح مسلم",     color: 0x0D47A1, emoji: "📘", total: 7563 },
-  abudawud: { name: "Sunan Abu Dawud",   arabic: "سنن أبي داود",  color: 0x4A148C, emoji: "📙", total: 5274 },
-  tirmidhi: { name: "Jami at-Tirmidhi",  arabic: "جامع الترمذي",  color: 0x880E4F, emoji: "📕", total: 3998 },
-  ibnmajah: { name: "Sunan Ibn Majah",   arabic: "سنن ابن ماجه",  color: 0x004D40, emoji: "📒", total: 4343 },
-  nasai:    { name: "Sunan an-Nasa'i",   arabic: "سنن النسائي",   color: 0x37474F, emoji: "📓", total: 5765 },
-  malik:    { name: "Muwatta Malik",     arabic: "موطأ مالك",     color: 0x6D4C41, emoji: "📔", total: 1858 },
+  // ── UmmahAPI ──
+  bukhari:  { name: "Sahih al-Bukhari",  arabic: "صحيح البخاري",  color: 0x1B5E20, emoji: "📗", total: 7589,  source: "ummah" },
+  muslim:   { name: "Sahih Muslim",      arabic: "صحيح مسلم",     color: 0x0D47A1, emoji: "📘", total: 7563,  source: "ummah" },
+  abudawud: { name: "Sunan Abu Dawud",   arabic: "سنن أبي داود",  color: 0x4A148C, emoji: "📙", total: 5274,  source: "ummah" },
+  tirmidhi: { name: "Jami at-Tirmidhi",  arabic: "جامع الترمذي",  color: 0x880E4F, emoji: "📕", total: 3998,  source: "ummah" },
+  ibnmajah: { name: "Sunan Ibn Majah",   arabic: "سنن ابن ماجه",  color: 0x004D40, emoji: "📒", total: 4343,  source: "ummah" },
+  nasai:    { name: "Sunan an-Nasa'i",   arabic: "سنن النسائي",   color: 0x37474F, emoji: "📓", total: 5765,  source: "ummah" },
+  malik:    { name: "Muwatta Malik",     arabic: "موطأ مالك",     color: 0x6D4C41, emoji: "📔", total: 1858,  source: "ummah" },
+
+  // ── Extended (hadith-json) ──
+  ahmad:    { name: "Musnad Ahmad",               arabic: "مسند أحمد",              color: 0x795548, emoji: "📚", total: 26363, source: "json", path: "the_9_books/ahmad.json" },
+  darimi:   { name: "Sunan ad-Darimi",            arabic: "سنن الدارمي",            color: 0x5D4037, emoji: "📜", total: 3367,  source: "json", path: "the_9_books/darimi.json" },
+  nawawi40: { name: "40 Hadith of Nawawi",        arabic: "الأربعون النووية",       color: 0xE65100, emoji: "📝", total: 42,    source: "json", path: "forties/nawawi40.json" },
+  qudsi40:  { name: "40 Hadith Qudsi",            arabic: "الأربعون القدسية",       color: 0x00695C, emoji: "✨", total: 40,    source: "json", path: "forties/qudsi40.json" },
+  shahwaliullah40: { name: "40 Hadith of Shah Waliullah", arabic: "أربعون الشاه ولي الله", color: 0x546E7A, emoji: "🕌", total: 40, source: "json", path: "forties/shahwaliullah40.json" },
+  riyadsalihin: { name: "Riyad as-Salihin",       arabic: "رياض الصالحين",          color: 0x2E7D32, emoji: "🌿", total: 1900,  source: "json", path: "other_books/riyadsalihin.json" },
+  shamail:  { name: "Shamail al-Muhammadiyah",    arabic: "الشمائل المحمدية",       color: 0xAD1457, emoji: "🕊️", total: 400,   source: "json", path: "other_books/shamail.json" },
+  bulugh:   { name: "Bulugh al-Maram",            arabic: "بلوغ المرام",             color: 0x4527A0, emoji: "⚖️", total: 1500,  source: "json", path: "other_books/bulugh.json" },
+  adab:     { name: "Al-Adab al-Mufrad",          arabic: "الأدب المفرد",            color: 0x1565C0, emoji: "🤝", total: 1300,  source: "json", path: "other_books/adab.json" },
+  mishkat:  { name: "Mishkat al-Masabih",         arabic: "مشكاة المصابيح",          color: 0xC62828, emoji: "💡", total: 5900,  source: "json", path: "other_books/mishkat.json" },
 };
 const COLLECTION_KEYS = Object.keys(COLLECTIONS);
 
@@ -101,13 +117,73 @@ function stripHtml(html) {
   return html?.replace(/<[^>]+>/g, "") || "";
 }
 
+// ── Extended Hadith JSON Loader ──
+const HADITH_JSON_BASE = "https://raw.githubusercontent.com/AhmedBaset/hadith-json/v1.2.0/db/by_book";
+const hadithJsonCache = new Map();
+const CACHE_TTL = 1000 * 60 * 60 * 2; // 2 hours
+
+async function fetchHadithJsonCollection(key) {
+  const now = Date.now();
+  const cached = hadithJsonCache.get(key);
+  if (cached && (now - cached.ts) < CACHE_TTL) return cached.data;
+
+  const col = COLLECTIONS[key];
+  if (!col || col.source !== "json") throw new Error(`Not a JSON-backed collection: ${key}`);
+
+  const url = `${HADITH_JSON_BASE}/${col.path}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error("Invalid hadith JSON structure");
+
+  hadithJsonCache.set(key, { data, ts: now });
+  return data;
+}
+
+function normalizeHadithJson(raw, collectionKey, number) {
+  const col = COLLECTIONS[collectionKey];
+  const narrator = raw.english?.narrator || "";
+  const text = raw.english?.text || raw.english || "Translation unavailable.";
+  return {
+    collection: collectionKey,
+    collection_name: col?.name || collectionKey,
+    hadithnumber: number || raw.id || raw.hadithNumber || 1,
+    english: narrator ? `${narrator}\n\n${text}` : text,
+    arabic: raw.arabic || null,
+    grade: raw.grade || null,
+  };
+}
+
 // ── Hadith ──
 async function fetchHadith(collection, number) {
-  return apiFetch(`/hadith/${collection}/${number}`);
+  const col = COLLECTIONS[collection];
+  if (!col) throw new Error(`Unknown collection: ${collection}`);
+
+  if (col.source === "ummah") {
+    return apiFetch(`/hadith/${collection}/${number}`);
+  }
+
+  // JSON source — treat number as 1-based array index for reliable Prev/Next nav
+  const hadiths = await fetchHadithJsonCollection(collection);
+  const hadith = hadiths[number - 1];
+  if (!hadith) throw new Error(`Hadith #${number} not found in ${col.name}`);
+  return normalizeHadithJson(hadith, collection, number);
 }
+
 async function fetchRandomHadith(collection) {
-  if (collection) return apiFetch(`/hadith/${collection}/random`);
-  return apiFetch(`/hadith/random`);
+  if (!collection) return apiFetch(`/hadith/random`); // any random from UmmahAPI
+
+  const col = COLLECTIONS[collection];
+  if (!col) throw new Error(`Unknown collection: ${collection}`);
+
+  if (col.source === "ummah") {
+    return apiFetch(`/hadith/${collection}/random`);
+  }
+
+  const hadiths = await fetchHadithJsonCollection(collection);
+  const idx = Math.floor(Math.random() * hadiths.length);
+  const hadith = hadiths[idx];
+  return normalizeHadithJson(hadith, collection, idx + 1);
 }
 
 // ── Quran (AlQuran Cloud) ──
@@ -707,16 +783,20 @@ client.on("interactionCreate", async interaction => {
 
     else if (cmd === "collections") {
       const total = Object.values(COLLECTIONS).reduce((s, c) => s + c.total, 0);
+      const ummahCols = COLLECTION_KEYS.filter(k => COLLECTIONS[k].source === "ummah");
+      const jsonCols  = COLLECTION_KEYS.filter(k => COLLECTIONS[k].source === "json");
+
       const embed = new EmbedBuilder()
         .setColor(0x5C4033)
         .setTitle("📚  Available Hadith Collections")
         .setDescription(
-          Object.entries(COLLECTIONS).map(([, v]) =>
-            `${v.emoji} **${v.name}** (${v.arabic}) — ${v.total.toLocaleString()} hadiths`
-          ).join("\n") +
+          `**UmmahAPI (${ummahCols.length})**\n` +
+          ummahCols.map(k => `${COLLECTIONS[k].emoji} **${COLLECTIONS[k].name}** (${COLLECTIONS[k].arabic}) — ${COLLECTIONS[k].total.toLocaleString()}`).join("\n") +
+          `\n\n**Extended via hadith-json (${jsonCols.length})**\n` +
+          jsonCols.map(k => `${COLLECTIONS[k].emoji} **${COLLECTIONS[k].name}** (${COLLECTIONS[k].arabic}) — ${COLLECTIONS[k].total.toLocaleString()}`).join("\n") +
           `\n\n**Total: ${total.toLocaleString()} hadiths** across ${COLLECTION_KEYS.length} collections`
         )
-        .setFooter({ text: "Powered by UmmahAPI • ummahapi.com" });
+        .setFooter({ text: "Powered by UmmahAPI & hadith-json" });
       await interaction.editReply({ embeds: [embed] });
     }
 
